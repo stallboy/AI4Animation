@@ -5,6 +5,7 @@ using UnityEngine;
 
 public class InputHandler : MonoBehaviour {
 
+	// 不知道为什么要2帧的数据，让上一帧的input状态也能延续影响到下一帧，这样响应性不是会下降吗？？
 	private static List<HashSet<KeyCode>> Keys = new List<HashSet<KeyCode>>();
 	private static int Capacity = 2;
 	private static int Clients = 0;

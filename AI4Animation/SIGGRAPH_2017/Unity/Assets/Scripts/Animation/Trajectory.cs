@@ -192,6 +192,7 @@ public class Trajectory {
 			return Slope;
 		}
 
+		// 根据地形信息，获得高度，坡度，左右点位置和高度
 		public void Postprocess() {
 			LayerMask mask = LayerMask.GetMask("Ground");
 			Vector3 position = Transformation.GetPosition();
@@ -202,6 +203,7 @@ public class Trajectory {
 
 			Slope = Utility.GetSlope(position, mask);
 
+			// 论文上是0.25，这里用的是左右0.5秒出的点
 			Vector3 ortho = Quaternion.Euler(0f, 90f, 0f) * direction;
 			RightSample = position + Trajectory.Width * ortho.normalized;
 			RightSample.y = Utility.GetHeight(RightSample, mask);
@@ -215,7 +217,7 @@ public class Trajectory {
 
 		Color[] colors = UltiDraw.GetRainbowColors(Styles.Length);
 
-		//Connections
+		//Connections，黑线连接评估点，这些点以step=10为间隔就画一个，总共12个，历史6个，当前1个，预测5个
 		for(int i=0; i<Points.Length-step; i+=step) {
 			UltiDraw.DrawLine(Points[i].GetPosition(), Points[i+step].GetPosition(), 0.01f, UltiDraw.Black);
 		}
@@ -242,7 +244,7 @@ public class Trajectory {
 			//UltiDraw.DrawLine(Points[i].GetPosition(), Points[i].GetPosition() + Points[i].GetVelocity(), 0.025f, 0f, UltiDraw.DarkGreen.Transparent(0.5f));
 		}
 
-		//Directions
+		//Directions，黄色线画个间隔点的方向
 		for(int i=0; i<Points.Length; i+=step) {
 			//Vector3 start = Points[i].GetPosition();
 			//Vector3 end = Points[i].GetPosition() + 0.25f * Points[i].GetDirection();
@@ -251,7 +253,7 @@ public class Trajectory {
 			UltiDraw.DrawLine(Points[i].GetPosition(), Points[i].GetPosition() + 0.25f*Points[i].GetDirection(), 0.025f, 0f, UltiDraw.Orange.Transparent(0.75f));
 		}
 
-		//Styles
+		//Styles，方块的颜色是什么信息呢？
 		if(Styles.Length > 0) {
 			for(int i=0; i<Points.Length; i+=step) {
 				float r = 0f;
@@ -311,12 +313,12 @@ public class Trajectory {
 		//	UltiDraw.DrawLine(Points[i].GetPosition(), Points[i].GetPosition() + 1f * Points[i].GetSlope() * Vector3.up, 0.025f, 0f, UltiDraw.Blue.Transparent(0.75f));
 		//}
 
-		//Positions
+		//Positions，间隔点再画上黑圈
 		for(int i=0; i<Points.Length; i+=step) {
 			UltiDraw.DrawCircle(Points[i].GetPosition(), 0.025f, UltiDraw.Black);
 		}
 
-		//Phase
+		//Phase，周期信息是怎么画的呢，为什么demo上看不到？
 		for(int i=0; i<Points.Length; i+=step) {
 			//UltiDraw.DrawLine(Points[i].GetPosition(), Points[i].GetPosition() + Points[i].Phase*Vector3.up, UltiDraw.IndianRed);
 			UltiDraw.DrawArrow(Points[i].GetPosition(), Points[i].GetPosition() + Points[i].Phase*Vector3.up, 0.8f, 0.025f, 0.05f, UltiDraw.IndianRed.Transparent(0.5f));

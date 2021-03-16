@@ -34,7 +34,7 @@ namespace SIGGRAPH_2017 {
 		//Trajectory for 60 Hz framerate
 		private const int PointSamples = 12;
 		private const int RootSampleIndex = 6;
-		private const int RootPointIndex = 60;
+		private const int RootPointIndex = 60; //当前点是第7个点，前6个是历史点，因为密度是10，第七个点在60 index处
 		private const int FuturePoints = 5;
 		private const int PreviousPoints = 6;
 		private const int PointDensity = 10;
@@ -52,6 +52,7 @@ namespace SIGGRAPH_2017 {
 			Forwards = new Vector3[Actor.Bones.Length];
 			Ups = new Vector3[Actor.Bones.Length];
 			Velocities = new Vector3[Actor.Bones.Length];
+			// 12个点，每2个点中间有9个，一共111个
 			Trajectory = new Trajectory(111, Controller.GetNames(), transform.position, TargetDirection);
 			Trajectory.Postprocess();
 			if(Controller.Styles.Length > 0) {
@@ -81,13 +82,13 @@ namespace SIGGRAPH_2017 {
 			if(NN.Parameters == null) {
 				return;
 			}
-			
-			//Update Target Direction / Velocity
+
+			//Update Target Direction / Velocity， 从控制器可以获得面朝向，移动方向
 			TargetDirection = Vector3.Lerp(TargetDirection, Quaternion.AngleAxis(Controller.QueryTurn()*60f, Vector3.up) * Trajectory.Points[RootPointIndex].GetDirection(), TargetBlending);
 			TargetVelocity = Vector3.Lerp(TargetVelocity, (Quaternion.LookRotation(TargetDirection, Vector3.up) * Controller.QueryMove()).normalized, TargetBlending);
-			
-			//Update Gait
-			for(int i=0; i<Controller.Styles.Length; i++) {
+
+			//Update Gait， ， 从控制器获得姿势，这个是float，因为值得改变是每帧插值过去的
+			for (int i=0; i<Controller.Styles.Length; i++) {
 				Trajectory.Points[RootPointIndex].Styles[i] = Utility.Interpolate(Trajectory.Points[RootPointIndex].Styles[i], Controller.Styles[i].Query() ? 1f : 0f, GaitTransition);
 			}
 			//For Human Only
@@ -117,35 +118,43 @@ namespace SIGGRAPH_2017 {
 				float bias_dir = 1.25f;
 				float scale_pos = (1.0f - Mathf.Pow(1.0f - ((float)(i - RootPointIndex) / (RootPointIndex)), bias_pos));
 				float scale_dir = (1.0f - Mathf.Pow(1.0f - ((float)(i - RootPointIndex) / (RootPointIndex)), bias_dir));
-				float vel_boost = PoolBias();
+				float vel_boost = PoolBias(); //基本就是1啊
 
-				float rescale = 1f / (Trajectory.Points.Length - (RootPointIndex + 1f));
+				// 因为总共预测得是1秒之后位置，所以每个点相对偏移要乘以这个
+				float rescale = 1f / (Trajectory.Points.Length - (RootPointIndex + 1f)); 
 
+				// 未来位置相对偏移，是预测位置相对偏移，和当前移动速度 的一个插值
 				trajectory_positions_blend[i] = trajectory_positions_blend[i-1] + Vector3.Lerp(
 					Trajectory.Points[i].GetPosition() - Trajectory.Points[i-1].GetPosition(), 
 					vel_boost * rescale * TargetVelocity,
 					scale_pos);
 
+
+				// 未来方向 是预测方向 和 当前方向 的插值
 				Trajectory.Points[i].SetDirection(Vector3.Lerp(Trajectory.Points[i].GetDirection(), TargetDirection, scale_dir));
 
+				// 未来姿势gait是跟当前一致
 				for(int j=0; j<Trajectory.Points[i].Styles.Length; j++) {
 					Trajectory.Points[i].Styles[j] = Trajectory.Points[RootPointIndex].Styles[j];
 				}
 			}
 			
+			// 设置上位置
 			for(int i=RootPointIndex+1; i<Trajectory.Points.Length; i++) {
 				Trajectory.Points[i].SetPosition(trajectory_positions_blend[i]);
 			}
 
+			// 只有整点 来做地形处理，获得高度啥的
 			for(int i=RootPointIndex; i<Trajectory.Points.Length; i+=PointDensity) {
 				Trajectory.Points[i].Postprocess();
 			}
 
+			// 其他中间点，都通过整点来插值得到
 			for(int i=RootPointIndex+1; i<Trajectory.Points.Length; i++) {
 				//ROOT	1		2		3		4		5
 				//.x....x.......x.......x.......x.......x
-				Trajectory.Point prev = GetPreviousSample(i);
-				Trajectory.Point next = GetNextSample(i);
+				Trajectory.Point prev = GetPreviousSample(i); // 得到前一个整点
+				Trajectory.Point next = GetNextSample(i);     // 下一个整点
 				float factor = (float)(i % PointDensity) / PointDensity;
 
 				Trajectory.Points[i].SetPosition((1f-factor)*prev.GetPosition() + factor*next.GetPosition());
@@ -155,7 +164,7 @@ namespace SIGGRAPH_2017 {
 				Trajectory.Points[i].SetSlope((1f-factor)*prev.GetSlope() + factor*next.GetSlope());
 			}
 
-			//Avoid Collisions
+			//Avoid Collisions，跟障碍物Obstacles碰撞后，后面预测的点都维持在碰撞的当前点上
 			CollisionChecks(RootPointIndex+1);
 
 			if(NN.Parameters != null) {
@@ -167,41 +176,41 @@ namespace SIGGRAPH_2017 {
 				for(int i=0; i<PointSamples; i++) {
 					Vector3 pos = Trajectory.Points[i*PointDensity].GetPosition().GetRelativePositionTo(currentRoot);
 					Vector3 dir = Trajectory.Points[i*PointDensity].GetDirection().GetRelativeDirectionTo(currentRoot);
-					NN.SetInput(PointSamples*0 + i, UnitScale * pos.x);
-					NN.SetInput(PointSamples*1 + i, UnitScale * pos.z);
-					NN.SetInput(PointSamples*2 + i, dir.x);
-					NN.SetInput(PointSamples*3 + i, dir.z);
+					NN.SetInput(PointSamples*0 + i, UnitScale * pos.x); // 神经网络输入：先是12个x位置（相对于当前坐标）
+					NN.SetInput(PointSamples*1 + i, UnitScale * pos.z); // 12个z位置
+					NN.SetInput(PointSamples*2 + i, dir.x);             // 12个x方向
+					NN.SetInput(PointSamples*3 + i, dir.z);             // 12个z方向
 				}
 
 				//Input Trajectory Gaits
-				for (int i=0; i<PointSamples; i++) {
+				for (int i=0; i<PointSamples; i++) {                    // 12个stand 姿势值， 12个 walk姿势值，12个 jog姿势值，crouch，jump，bump，共12*6
 					for(int j=0; j<Trajectory.Points[i*PointDensity].Styles.Length; j++) {
 						NN.SetInput(PointSamples*(4+j) + i, Trajectory.Points[i*PointDensity].Styles[j]);
 					}
-					//FOR HUMAN ONLY
+					//FOR HUMAN ONLY， 这是把jump的gait信息给覆盖了。破面太陡，就自动jump
 					NN.SetInput(PointSamples*8 + i, Trajectory.Points[i*PointDensity].GetSlope());
 					//
 				}
 
 				//Input Previous Bone Positions / Velocities
 				for(int i=0; i<Actor.Bones.Length; i++) {
-					int o = 10*PointSamples;
+					int o = 10*PointSamples;											// input的index从120开始了
 					Vector3 pos = Positions[i].GetRelativePositionTo(previousRoot);
 					Vector3 vel = Velocities[i].GetRelativeDirectionTo(previousRoot);
-					NN.SetInput(o + Actor.Bones.Length*3*0 + i*3+0, UnitScale * pos.x);
+					NN.SetInput(o + Actor.Bones.Length*3*0 + i*3+0, UnitScale * pos.x); // 31个骨骼节点位置信息，x,y,z
 					NN.SetInput(o + Actor.Bones.Length*3*0 + i*3+1, UnitScale * pos.y);
 					NN.SetInput(o + Actor.Bones.Length*3*0 + i*3+2, UnitScale * pos.z);
-					NN.SetInput(o + Actor.Bones.Length*3*1 + i*3+0, UnitScale * vel.x);
+					NN.SetInput(o + Actor.Bones.Length*3*1 + i*3+0, UnitScale * vel.x); // 31个骨骼节点速度信息，x,y,z
 					NN.SetInput(o + Actor.Bones.Length*3*1 + i*3+1, UnitScale * vel.y);
 					NN.SetInput(o + Actor.Bones.Length*3*1 + i*3+2, UnitScale * vel.z);
 				}
 
-				//Input Trajectory Heights
+				//Input Trajectory Heights，input的index从
 				for(int i=0; i<PointSamples; i++) {
-					int o = 10*PointSamples + Actor.Bones.Length*3*2;
-					NN.SetInput(o + PointSamples*0 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetRightSample().y - currentRoot.GetPosition().y));
-					NN.SetInput(o + PointSamples*1 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetPosition().y - currentRoot.GetPosition().y));
-					NN.SetInput(o + PointSamples*2 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetLeftSample().y - currentRoot.GetPosition().y));
+					int o = 10*PointSamples + Actor.Bones.Length*3*2;                   // input的index从120+186=306开始了
+					NN.SetInput(o + PointSamples*0 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetRightSample().y - currentRoot.GetPosition().y));	// 12个右边点高度
+					NN.SetInput(o + PointSamples*1 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetPosition().y - currentRoot.GetPosition().y));     // 12个中间点高度
+					NN.SetInput(o + PointSamples*2 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetLeftSample().y - currentRoot.GetPosition().y));   // 12个左边点高度
 				}
 
 				//Predict
@@ -302,7 +311,7 @@ namespace SIGGRAPH_2017 {
 			float[] styles = Trajectory.Points[RootPointIndex].Styles;
 			float bias = 0f;
 			for(int i=0; i<styles.Length; i++) {
-				float _bias = Controller.Styles[i].Bias;
+				float _bias = Controller.Styles[i].Bias; // 这个配置都是1
 				float max = 0f;
 				for(int j=0; j<Controller.Styles[i].Multipliers.Length; j++) {
 					if(Input.GetKey(Controller.Styles[i].Multipliers[j].Key)) {
@@ -335,6 +344,7 @@ namespace SIGGRAPH_2017 {
 			}
 		}
 
+		// 跟障碍物Obstacles碰撞后，后面预测的点都维持在当前点上。
 		private void CollisionChecks(int start) {
 			for(int i=start; i<Trajectory.Points.Length; i++) {
 				float safety = 0.5f;
@@ -343,7 +353,7 @@ namespace SIGGRAPH_2017 {
 				Vector3 testPos = previousPos + safety*(currentPos-previousPos).normalized;
 				Vector3 projectedPos = Utility.ProjectCollision(previousPos, testPos, LayerMask.GetMask("Obstacles"));
 				if(testPos != projectedPos) {
-					Vector3 correctedPos = testPos + safety * (previousPos-testPos).normalized;
+					Vector3 correctedPos = testPos + safety * (previousPos-testPos).normalized; //这就是previousPos吧
 					Trajectory.Points[i].SetPosition(correctedPos);
 				}
 			}
@@ -383,13 +393,18 @@ namespace SIGGRAPH_2017 {
 				}
 
 				UltiDraw.Begin();
+				// 红色是目标面朝方向
 				UltiDraw.DrawLine(Trajectory.Points[RootPointIndex].GetPosition(), Trajectory.Points[RootPointIndex].GetPosition() + TargetDirection, 0.05f, 0f, UltiDraw.Red.Transparent(0.75f));
+				// 绿色是目标移动方向
 				UltiDraw.DrawLine(Trajectory.Points[RootPointIndex].GetPosition(), Trajectory.Points[RootPointIndex].GetPosition() + TargetVelocity, 0.05f, 0f, UltiDraw.Green.Transparent(0.75f));
 				UltiDraw.End();
+
+				// 画地面轨迹
 				Trajectory.Draw(10);
 				
 				UltiDraw.Begin();
 				for(int i=0; i<Actor.Bones.Length; i++) {
+					// 紫色是画 骨骼速度
 					UltiDraw.DrawArrow(
 						Actor.Bones[i].Transform.position,
 						Actor.Bones[i].Transform.position + Velocities[i],

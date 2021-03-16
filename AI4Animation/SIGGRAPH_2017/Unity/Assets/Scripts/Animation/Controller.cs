@@ -15,6 +15,8 @@ public class Controller {
 	public KeyCode TurnLeft = KeyCode.Q;
 	public KeyCode TurnRight = KeyCode.E;
 
+	// style对应的是论文里的gait，包括了stand， walk，jog，crouch，jump，bump这些
+	// 这个由用户control控制产生。
 	public Style[] Styles = new Style[0];
 
 	public float[] GetStyle() {
@@ -33,6 +35,7 @@ public class Controller {
 		return names;
 	}
 
+	//是控制移动方向
 	public Vector3 QueryMove() {
 		Vector3 move = Vector3.zero;
 		if(InputHandler.GetKey(Forward)) {
@@ -50,6 +53,7 @@ public class Controller {
 		return move;
 	}
 
+	//控制面朝方向
 	public float QueryTurn() {
 		float turn = 0f;
 		if(InputHandler.GetKey(TurnLeft)) {
@@ -110,6 +114,7 @@ public class Controller {
 		public bool[] Negations = new bool[0];
 		public Multiplier[] Multipliers = new Multiplier[0];
 
+		// 查询gait，姿势状态。
 		public bool Query() {
 			if(Keys.Length == 0) {
 				return false;

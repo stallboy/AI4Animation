@@ -7,6 +7,8 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+// 一个skeleton编辑和显示器，不用实际的mesh，不用从autocad导入了骨骼了。这里直接编辑和展示
+// 当然从autocad导入骨骼和mesh，也能用于显示骨骼。
 public class Actor : MonoBehaviour {
 
 	public bool InspectSkeleton = false;

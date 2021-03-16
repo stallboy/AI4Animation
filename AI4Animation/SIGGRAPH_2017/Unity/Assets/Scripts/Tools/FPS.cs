@@ -7,6 +7,7 @@ public class FPS : MonoBehaviour {
 	private float DeltaTime = 0.0f;
  
 	void Update() {
+		// 这个比较巧妙，就是d = d * 0.9 + cur * 0.1，一个平滑滤波
 		DeltaTime += (Time.deltaTime - DeltaTime) * 0.1f;
 	}
  

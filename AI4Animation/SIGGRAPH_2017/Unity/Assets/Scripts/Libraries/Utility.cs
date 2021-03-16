@@ -238,6 +238,7 @@ public static class Utility {
 		return position;
 	}
 
+	//从1000米高度向下打射线来求高度
 	public static float GetHeight(Vector3 origin, LayerMask mask) {
 		RaycastHit[] hits = Physics.RaycastAll(new Vector3(origin.x, 1000f, origin.z), Vector3.down, float.PositiveInfinity, mask);
 		if(hits.Length == 0) {
@@ -251,6 +252,7 @@ public static class Utility {
 		}
 	}
 
+	//拿到raycasthit最高点的法线normal和up来求角度/90，水平是0， 垂直是1
 	public static float GetSlope(Vector3 origin, LayerMask mask) {
 		RaycastHit[] upHits = Physics.RaycastAll(origin+Vector3.down, Vector3.up, float.PositiveInfinity, mask);
 		RaycastHit[] downHits = Physics.RaycastAll(origin+Vector3.up, Vector3.down, float.PositiveInfinity, mask);
