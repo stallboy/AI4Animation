@@ -205,7 +205,7 @@ namespace SIGGRAPH_2017 {
 					NN.SetInput(o + Actor.Bones.Length*3*1 + i*3+2, UnitScale * vel.z);
 				}
 
-				//Input Trajectory Heights，input的index从
+				//Input Trajectory Heights
 				for(int i=0; i<PointSamples; i++) {
 					int o = 10*PointSamples + Actor.Bones.Length*3*2;                   // input的index从120+186=306开始了
 					NN.SetInput(o + PointSamples*0 + i, UnitScale * (Trajectory.Points[i*PointDensity].GetRightSample().y - currentRoot.GetPosition().y));	// 12个右边点高度
@@ -214,12 +214,12 @@ namespace SIGGRAPH_2017 {
 				}
 
 				//Predict
-				float rest = Mathf.Pow(1.0f-Trajectory.Points[RootPointIndex].Styles[0], 0.25f);
-				NN.SetDamping(1f - (rest * 0.9f + 0.1f));
+				float rest = Mathf.Pow(1.0f-Trajectory.Points[RootPointIndex].Styles[0], 0.25f); // stand为1时，rest为0，阻尼damping为0.9
+				NN.SetDamping(1f - (rest * 0.9f + 0.1f)); // stand为0时，rest为1，damping为0，从而下帧phase就取 当前phase + 此帧predict后的phase偏移，实际的PhaseIndex=3
 				NN.Predict();
 
-				//Update Past Trajectory
-				for(int i=0; i<RootPointIndex; i++) {
+				//Update Past Trajectory,之前的[1,60]帧记录下来到[0,59]
+				for (int i=0; i<RootPointIndex; i++) { 
 					Trajectory.Points[i].SetPosition(Trajectory.Points[i+1].GetPosition());
 					Trajectory.Points[i].SetDirection(Trajectory.Points[i+1].GetDirection());
 					Trajectory.Points[i].SetLeftsample(Trajectory.Points[i+1].GetLeftSample());
@@ -230,28 +230,28 @@ namespace SIGGRAPH_2017 {
 					}
 				}
 
-				//Update Current Trajectory
+				//Update Current Trajectory，Y的 0,1是预测的下一帧的dx，dz，2是预测的下一帧的转向角度
 				Trajectory.Points[RootPointIndex].SetPosition((rest * new Vector3(NN.GetOutput(0) / UnitScale, 0f, NN.GetOutput(1) / UnitScale)).GetRelativePositionFrom(currentRoot));
 				Trajectory.Points[RootPointIndex].SetDirection(Quaternion.AngleAxis(rest * Mathf.Rad2Deg * (-NN.GetOutput(2)), Vector3.up) * Trajectory.Points[RootPointIndex].GetDirection());
 				Trajectory.Points[RootPointIndex].Postprocess();
 				Matrix4x4 nextRoot = Trajectory.Points[RootPointIndex].GetTransformation();
 
-				//Update Future Trajectory
+				//Update Future Trajectory，剩下的路径点，用当前帧的路径点 + 本位点预测相对于 实际设置的位置和方向的偏移
 				for(int i=RootPointIndex+1; i<Trajectory.Points.Length; i++) {
 					Trajectory.Points[i].SetPosition(Trajectory.Points[i].GetPosition() + (rest * new Vector3(NN.GetOutput(0) / UnitScale, 0f, NN.GetOutput(1) / UnitScale)).GetRelativeDirectionFrom(nextRoot));
 				}
 				for(int i=RootPointIndex+1; i<Trajectory.Points.Length; i++) {
 					int w = RootSampleIndex;
-					float m = Mathf.Repeat(((float)i - (float)RootPointIndex) / (float)PointDensity, 1.0f);
-					float posX = (1-m) * NN.GetOutput(8+(w*0)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*0)+(i/PointDensity)-w+1);
-					float posZ = (1-m) * NN.GetOutput(8+(w*1)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*1)+(i/PointDensity)-w+1);
-					float dirX = (1-m) * NN.GetOutput(8+(w*2)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*2)+(i/PointDensity)-w+1);
-					float dirZ = (1-m) * NN.GetOutput(8+(w*3)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*3)+(i/PointDensity)-w+1);
-					Trajectory.Points[i].SetPosition(
+					float m = Mathf.Repeat(((float)i - (float)RootPointIndex) / (float)PointDensity, 1.0f);                         // index从8开始
+					float posX = (1-m) * NN.GetOutput(8+(w*0)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*0)+(i/PointDensity)-w+1); // 先有6个posX
+					float posZ = (1-m) * NN.GetOutput(8+(w*1)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*1)+(i/PointDensity)-w+1); // 6个posZ
+					float dirX = (1-m) * NN.GetOutput(8+(w*2)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*2)+(i/PointDensity)-w+1); // 6个dirX
+					float dirZ = (1-m) * NN.GetOutput(8+(w*3)+(i/PointDensity)-w) + m * NN.GetOutput(8+(w*3)+(i/PointDensity)-w+1); // 6个dirZ
+					Trajectory.Points[i].SetPosition( //这50个中间的45个点的pos，dir好像白计算了，后面会从12个位点中做插值
 						Utility.Interpolate(
 							Trajectory.Points[i].GetPosition(),
 							new Vector3(posX / UnitScale, 0f, posZ / UnitScale).GetRelativePositionFrom(nextRoot),
-							TrajectoryCorrection
+							TrajectoryCorrection //实际设置位0.75
 							)
 						);
 					Trajectory.Points[i].SetDirection(
@@ -285,8 +285,8 @@ namespace SIGGRAPH_2017 {
 				CollisionChecks(RootPointIndex);
 				
 				//Compute Posture
-				int opos = 8 + 4*RootSampleIndex + Actor.Bones.Length*3*0;
-				int ovel = 8 + 4*RootSampleIndex + Actor.Bones.Length*3*1;
+				int opos = 8 + 4*RootSampleIndex + Actor.Bones.Length*3*0;    // index从 8+24=30开始，有31*3个骨骼点位置
+				int ovel = 8 + 4*RootSampleIndex + Actor.Bones.Length*3*1;    // 从30+31*3开始，有93个骨骼点速度
 				//int orot = 8 + 4*RootSampleIndex + Actor.Bones.Length*3*2;
 				for(int i=0; i<Actor.Bones.Length; i++) {			
 					Vector3 position = new Vector3(NN.GetOutput(opos+i*3+0), NN.GetOutput(opos+i*3+1), NN.GetOutput(opos+i*3+2)) / UnitScale;
@@ -301,7 +301,7 @@ namespace SIGGRAPH_2017 {
 				transform.position = nextRoot.GetPosition();
 				transform.rotation = nextRoot.GetRotation();
 				for(int i=0; i<Actor.Bones.Length; i++) {
-					Actor.Bones[i].Transform.position = Positions[i];
+					Actor.Bones[i].Transform.position = Positions[i]; //也就是说这个允许各个拉伸，但没有任何旋转，这应该是它跟Adam的区别。
 					Actor.Bones[i].Transform.rotation = Quaternion.LookRotation(Forwards[i], Ups[i]);
 				}
 			}
